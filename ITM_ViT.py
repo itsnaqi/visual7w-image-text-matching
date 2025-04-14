@@ -190,9 +190,9 @@ class ITM_Model(nn.Module):
 
         elif self.ARCHITECTURE == "ViT":
             # Create a Swin Transformer model using timm.
-            self.vision_model = timm.create_model('swin_base_patch4_window7_224', pretrained=PRETRAINED)
+            self.vision_model = timm.create_model('deit_base_patch16_224', pretrained=PRETRAINED)
             # Remove the classification head so that the model outputs features instead of logits.
-            self.vision_model.reset_classifier(0)
+            self.vision_model.head = nn.Identity()
             # Set up a linear layer to reduce the extracted feature dimensionality to 128.
             self.fc_vit = nn.Linear(self.vision_model.num_features, 128)
 
