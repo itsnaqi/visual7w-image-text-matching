@@ -42,3 +42,12 @@ Balanced Accuracy: 0.7982
 Total Test Loss: 0.4559
 Mean Reciprocal Rank (MRR): 0.7816
 Testing Time: 26.76 seconds
+
+Epoch [30/30] Average Loss: 0.1490, Duration: 95.90 s, Training Accuracy: 0.9511
+TOTAL Training Time: 4845.99 seconds
+EVALUATING Ensemble model
+Test Accuracy: 0.7759
+Balanced Accuracy: 0.7759
+Total Test Loss: 0.9780
+Mean Reciprocal Rank (MRR): 0.7757
+Testing Time: 27.70 seconds
