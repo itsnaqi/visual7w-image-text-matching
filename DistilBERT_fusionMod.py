@@ -398,7 +398,7 @@ if __name__ == '__main__':
     sentence_embeddings = load_sentence_embeddings(sentence_embeddings_file)
     
     # Create datasets and loaders.
-    train_dataset = ITM_Dataset(IMAGES_PATH, train_data_file, sentence_embeddings, data_split="train", train_ratio=0.3, use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
+    train_dataset = ITM_Dataset(IMAGES_PATH, train_data_file, sentence_embeddings, data_split="train", train_ratio=0.2, use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
     train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
     test_dataset = ITM_Dataset(IMAGES_PATH, test_data_file, sentence_embeddings, data_split="test", use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
     test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
@@ -423,5 +423,5 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     optimiser = torch.optim.AdamW(model.parameters(), lr=3e-5, weight_decay=1e-4)
     
-    train_model(model, MODEL_ARCHITECTURE, train_loader, criterion, optimiser, num_epochs=30)
+    train_model(model, MODEL_ARCHITECTURE, train_loader, criterion, optimiser, num_epochs=10)
     evaluate_model(model, MODEL_ARCHITECTURE, test_loader, device)
