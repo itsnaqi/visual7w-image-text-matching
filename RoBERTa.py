@@ -12,36 +12,59 @@ from torchvision import models, transforms
 from torch.utils.data import DataLoader, Dataset
 import timm
 from transformers import AutoTokenizer, AutoModel
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, roc_curve
+import matplotlib.pyplot as plt
 
-# Global flag to toggle the use of the alternative text encoder.
+# Global flags.
 USE_ALT_TEXT_ENCODER = True
 USE_FOCAL_LOSS = True
 
+###########################################
+# Focal Loss (for class imbalance)
+###########################################
+# class FocalLoss(nn.Module):
+#     def __init__(self, gamma=2, alpha=None, reduction='mean'):
+#         super(FocalLoss, self).__init__()
+#         self.gamma = gamma
+#         self.alpha = alpha
+#         self.reduction = reduction
+#         self.ce = nn.CrossEntropyLoss(reduction='none')
+#     def forward(self, inputs, targets):
+#         ce_loss = self.ce(inputs, targets)
+#         pt = torch.exp(-ce_loss)
+#         focal_loss = (1 - pt) ** self.gamma * ce_loss
+#         if self.alpha is not None:
+#             if isinstance(self.alpha, (float, int)):
+#                 alpha = torch.tensor([self.alpha, 1 - self.alpha]).to(inputs.device)
+#             else:
+#                 alpha = self.alpha.to(inputs.device)
+#             at = alpha.gather(0, targets.data.view(-1))
+#             focal_loss = at * focal_loss
+#         if self.reduction == 'mean':
+#             return focal_loss.mean()
+#         elif self.reduction == 'sum':
+#             return focal_loss.sum()
+#         else:
+#             return focal_loss
 class FocalLoss(nn.Module):
     def __init__(self, gamma=2, alpha=None, reduction='mean'):
-        super(FocalLoss, self).__init__()
+        super().__init__()
         self.gamma = gamma
-        self.alpha = alpha
         self.reduction = reduction
+        if isinstance(alpha, (float, int)):
+            # swap here so alpha[1] = weight for class=1
+            self.alpha = torch.tensor([1 - alpha, alpha])
+        else:
+            self.alpha = alpha  # expect a length‑2 tensor
         self.ce = nn.CrossEntropyLoss(reduction='none')
     def forward(self, inputs, targets):
         ce_loss = self.ce(inputs, targets)
         pt = torch.exp(-ce_loss)
-        focal_loss = (1 - pt) ** self.gamma * ce_loss
+        fl = (1 - pt) ** self.gamma * ce_loss
         if self.alpha is not None:
-            if isinstance(self.alpha, (float, int)):
-                alpha = torch.tensor([self.alpha, 1 - self.alpha]).to(inputs.device)
-            else:
-                alpha = self.alpha.to(inputs.device)
-            at = alpha.gather(0, targets.data.view(-1))
-            focal_loss = at * focal_loss
-        if self.reduction == 'mean':
-            return focal_loss.mean()
-        elif self.reduction == 'sum':
-            return focal_loss.sum()
-        else:
-            return focal_loss
+            at = self.alpha.to(inputs.device).gather(0, targets.view(-1))
+            fl = at * fl
+        return fl.mean() if self.reduction=='mean' else fl.sum()
 
 ###########################################
 # Alternative Text Encoder Module using RoBERTa
@@ -53,17 +76,13 @@ class RoBERTaTextEncoder(nn.Module):
         self.text_model = AutoModel.from_pretrained(model_name)
         self.projection = nn.Linear(768, projection_dim)
         self.dropout = nn.Dropout(p=dropout_rate)
-        
         if not fine_tune:
             for param in self.text_model.parameters():
                 param.requires_grad = False
-
     def forward(self, text_list):
-        # Tokenize input with padding and truncation.
         encoding = self.tokenizer(text_list, return_tensors="pt", padding=True, truncation=True, max_length=64)
         encoding = {key: val.to(next(self.text_model.parameters()).device) for key, val in encoding.items()}
         outputs = self.text_model(**encoding)
-        # Use the first token's hidden state as representation.
         cls_output = outputs.last_hidden_state[:, 0, :]
         projected = self.projection(cls_output)
         projected = self.dropout(projected)
@@ -93,7 +112,6 @@ class ITM_Dataset(Dataset):
             transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
         ])
         self.load_data()
-
     def load_data(self):
         print("LOADING data from " + self.data_file)
         random.seed(42)
@@ -120,10 +138,8 @@ class ITM_Dataset(Dataset):
                     self.answer_embeddings_data.append(self.sentence_embeddings[answer_text])
         print(f"|image_data|={len(self.image_data)} | |question_data|={len(self.question_data)} | |answer_data|={len(self.answer_data)}")
         print("done loading data...")
-
     def __len__(self):
         return len(self.image_data)
-
     def __getitem__(self, idx):
         img_path = self.image_data[idx]
         img = Image.open(img_path).convert("RGB")
@@ -138,7 +154,7 @@ class ITM_Dataset(Dataset):
             q_feature = torch.tensor(self.question_embeddings_data[idx], dtype=torch.float32)
             a_feature = torch.tensor(self.answer_embeddings_data[idx], dtype=torch.float32)
         return img, q_feature, a_feature, label, img_name, question_text
-    
+
 def load_sentence_embeddings(file_path):
     print("READING sentence embeddings...")
     with open(file_path, 'rb') as f:
@@ -151,7 +167,6 @@ def load_sentence_embeddings(file_path):
 class Transformer_VisionEncoder(nn.Module):
     def __init__(self, pretrained=None, dropout_rate=0.3):
         super(Transformer_VisionEncoder, self).__init__()
-        # Load ViT-B/16 via timm.
         if pretrained:
             self.vision_model = timm.create_model('vit_base_patch16_224', pretrained=True)
         else:
@@ -169,14 +184,11 @@ class Transformer_VisionEncoder(nn.Module):
 class AttentionFusionModule(nn.Module):
     def __init__(self, feature_dim, num_heads=2):
         super(AttentionFusionModule, self).__init__()
-        # MultiheadAttention with batch_first=True expects input shape (batch, seq_len, embed_dim)
         self.mha = nn.MultiheadAttention(embed_dim=feature_dim, num_heads=num_heads, batch_first=True)
     def forward(self, cnn_feat, vit_feat):
-        # Stack features (each shape: [batch, feature_dim]) along a new sequence dimension.
-        feats = torch.stack([cnn_feat, vit_feat], dim=1)  # Shape: [batch, 2, feature_dim]
+        feats = torch.stack([cnn_feat, vit_feat], dim=1)  # [batch, 2, feature_dim]
         attn_output, attn_weights = self.mha(feats, feats, feats)
-        # Pool by taking the mean across the sequence dimension.
-        fused_feat = torch.mean(attn_output, dim=1)  # Shape: [batch, feature_dim]
+        fused_feat = torch.mean(attn_output, dim=1)  # [batch, feature_dim]
         return fused_feat, attn_weights
 
 ###########################################
@@ -189,9 +201,8 @@ class ITM_Model(nn.Module):
         self.ARCHITECTURE = ARCHITECTURE
         self.use_alt_text_encoder = use_alt_text_encoder
 
-        # Vision processing.
         if self.ARCHITECTURE == "CNN":
-            self.vision_model = models.resnet18(pretrained=PRETRAINED)
+            self.vision_model = models.resnet50(pretrained=PRETRAINED)
             self.dropout = nn.Dropout(p=dropout_rate)
             if PRETRAINED:
                 for param in self.vision_model.parameters():
@@ -209,7 +220,7 @@ class ITM_Model(nn.Module):
             self.fc_vit = nn.Linear(self.vision_model.num_features, 128)
         
         elif self.ARCHITECTURE == "Ensemble":
-            self.cnn_model = models.resnet18(pretrained=PRETRAINED)
+            self.cnn_model = models.resnet50(pretrained=PRETRAINED)
             self.dropout_cnn = nn.Dropout(p=dropout_rate)
             if PRETRAINED:
                 for param in self.cnn_model.parameters():
@@ -223,24 +234,20 @@ class ITM_Model(nn.Module):
             self.cnn_model.fc = nn.Linear(self.cnn_model.fc.in_features, 128)
             self.vit_model = Transformer_VisionEncoder(pretrained=PRETRAINED, dropout_rate=dropout_rate)
             self.fc_vit = nn.Linear(self.vit_model.num_features, 128)
-            # Use attention-based fusion for combining CNN and ViT features.
             self.fusion = AttentionFusionModule(feature_dim=128, num_heads=2)
         
         else:
             raise ValueError("UNKNOWN neural architecture")
 
-        # Text processing using RoBERTa as the alternative text encoder.
         if not self.use_alt_text_encoder:
             self.question_embedding_layer = nn.Linear(768, 128)
             self.answer_embedding_layer = nn.Linear(768, 128)
         else:
             self.alt_text_encoder = RoBERTaTextEncoder(model_name="roberta-base", projection_dim=128, fine_tune=True, dropout_rate=dropout_rate)
         
-        # Final classification layer.
         self.fc = nn.Linear(128 + 128 + 128, num_classes)
 
     def forward(self, img, question_input, answer_input):
-        # Process vision.
         if self.ARCHITECTURE == "CNN":
             img_features = self.vision_model(img)
             img_features = self.dropout(img_features)
@@ -255,15 +262,12 @@ class ITM_Model(nn.Module):
             img_features, attn_weights = self.fusion(cnn_features, vit_features)
         else:
             raise ValueError("Unsupported architecture")
-
-        # Process text.
         if self.use_alt_text_encoder:
             question_features = self.alt_text_encoder(question_input)
             answer_features = self.alt_text_encoder(answer_input)
         else:
             question_features = self.question_embedding_layer(question_input)
             answer_features = self.answer_embedding_layer(answer_input)
-        
         combined_features = torch.cat((img_features, question_features, answer_features), dim=1)
         output = self.fc(combined_features)
         return output
@@ -315,6 +319,9 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
     best_val_acc = 0.0
     epochs_no_improve = 0
     best_model_state = None
+    train_losses = []
+    train_accuracies = []
+    val_accuracies = []
     for epoch in range(num_epochs):
         epoch_start = time.time()
         running_loss = 0.0
@@ -340,9 +347,11 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
         epoch_loss = running_loss / total_batches
         epoch_duration = time.time() - epoch_start
         scheduler.step()
-
         train_acc = evaluate_accuracy(model, train_loader, device)
         val_acc = evaluate_accuracy(model, val_loader, device)
+        train_losses.append(epoch_loss)
+        train_accuracies.append(train_acc)
+        val_accuracies.append(val_acc)
         print(f'Epoch [{epoch+1}/{num_epochs}] Loss: {epoch_loss:.4f}, Duration: {epoch_duration:.2f}s, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}')
         if val_acc > best_val_acc:
             best_val_acc = val_acc
@@ -356,6 +365,7 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
                 break
     overall_duration = time.time() - overall_start
     print(f'TOTAL Training Time: {overall_duration:.2f} seconds')
+    return train_losses, train_accuracies, val_accuracies
 
 ###########################################
 # Additional Metrics Calculation
@@ -368,7 +378,7 @@ def calculate_additional_metrics(all_labels, all_predictions, all_probabilities)
     return precision, recall, f1, auc
 
 ###########################################
-# Evaluation Function with additional metrics (Precision, Recall, F1-Score, AUC) and MRR
+# Evaluation Function with additional metrics and MRR, returns predictions for confusion matrix
 ###########################################
 def evaluate_model(model, ARCHITECTURE, test_loader, device):
     print(f'EVALUATING {ARCHITECTURE} model')
@@ -378,7 +388,7 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
     total_samples = 0
     all_labels = []
     all_predictions = []
-    all_probabilities = []  # probability for class "match"
+    all_probabilities = []  # for positive class probabilities
     group_keys = []         # (img_name, question_text) for MRR
     eval_start = time.time()
     with torch.no_grad():
@@ -408,10 +418,7 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
     eval_duration = time.time() - eval_start
     test_loss = total_loss / total_samples
     test_accuracy = correct / total_samples
-
     precision, recall, f1, auc = calculate_additional_metrics(all_labels, all_predictions, all_probabilities)
-
-    # Compute MRR.
     group_dict = {}
     for key, prob, lab in zip(group_keys, all_probabilities, all_labels):
         if key not in group_dict:
@@ -429,7 +436,6 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
         if rank > 0:
             mrr_total += 1.0 / rank
     mrr = mrr_total / len(group_dict)
-    
     print(f'Test Accuracy: {test_accuracy:.4f}')
     print(f'Balanced Accuracy: {test_accuracy:.4f}')
     print(f'Total Test Loss: {test_loss:.4f}')
@@ -439,6 +445,61 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
     print(f'F1-Score: {f1:.4f}')
     print(f'AUC: {auc:.4f}')
     print(f'Testing Time: {eval_duration:.2f} seconds')
+    return all_labels, all_predictions
+
+###########################################
+# Plotting Functions (Figures saved to files)
+###########################################
+def plot_confusion_matrix(cm, classes, title='Confusion Matrix', cmap=plt.cm.Blues):
+    plt.figure(figsize=(6,6))
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+    fmt = 'd'
+    thresh = cm.max() / 2.0
+    for i, j in np.ndindex(cm.shape):
+        plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.tight_layout()
+    plt.savefig("confusion_matrix.png")
+    plt.close()
+
+def plot_metrics(epochs, train_losses, train_accuracies, val_accuracies):
+    plt.figure(figsize=(10,4))
+    plt.subplot(1,2,1)
+    plt.plot(epochs, train_losses, label="Train Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training Loss Curve")
+    plt.legend()
+    plt.subplot(1,2,2)
+    plt.plot(epochs, train_accuracies, label="Train Acc")
+    plt.plot(epochs, val_accuracies, label="Val Acc")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title("Accuracy Curve")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("training_metrics.png")
+    plt.close()
+
+def plot_roc_curve(all_labels, all_probabilities):
+    fpr, tpr, _ = roc_curve(all_labels, all_probabilities)
+    plt.figure(figsize=(6,6))
+    plt.plot(fpr, tpr, label='ROC curve')
+    plt.plot([0,1],[0,1],'--', label='Chance')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("roc_curve.png")
+    plt.close()
 
 ###########################################
 # Main Execution
@@ -456,7 +517,7 @@ if __name__ == '__main__':
     sentence_embeddings = load_sentence_embeddings(sentence_embeddings_file)
     
     # Create datasets and loaders.
-    train_dataset = ITM_Dataset(IMAGES_PATH, train_data_file, sentence_embeddings, data_split="train", train_ratio=0.2, use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
+    train_dataset = ITM_Dataset(IMAGES_PATH, train_data_file, sentence_embeddings, data_split="train", train_ratio=0.3, use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
     train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
     dev_dataset = ITM_Dataset(IMAGES_PATH, dev_data_file, sentence_embeddings, data_split="dev", use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
     dev_loader = DataLoader(dev_dataset, batch_size=16, shuffle=False)
@@ -489,5 +550,37 @@ if __name__ == '__main__':
     optimiser, scheduler = get_optimizer_and_scheduler(model, base_lr=3e-5, text_lr=1e-5)
     
     # Train with early stopping.
-    train_model(model, MODEL_ARCHITECTURE, train_loader, dev_loader, criterion, optimiser, scheduler, num_epochs=15, patience=3)
-    evaluate_model(model, MODEL_ARCHITECTURE, test_loader, device)
+    train_losses, train_accuracies, val_accuracies = train_model(model, MODEL_ARCHITECTURE, train_loader, dev_loader, criterion, optimiser, scheduler, num_epochs=15, patience=3)
+    
+    # Plot training curves.
+    epochs = list(range(1, len(train_losses)+1))
+    plot_metrics(epochs, train_losses, train_accuracies, val_accuracies)
+    
+    # Evaluate and capture labels & predictions for confusion matrix & ROC curve.
+    all_labels, all_predictions = evaluate_model(model, MODEL_ARCHITECTURE, test_loader, device)
+    
+    # Compute confusion matrix.
+    cm = confusion_matrix(all_labels, all_predictions)
+    plot_confusion_matrix(cm, classes=["no-match", "match"], title="Confusion Matrix")
+    
+    # Plot ROC Curve.
+    model.eval()
+    all_probs = []
+    with torch.no_grad():
+        for batch in test_loader:
+            if len(batch) == 6:
+                images, question_input, answer_input, labels, _, _ = batch
+            else:
+                images, question_input, answer_input, labels = batch
+            images = images.to(device)
+            if not USE_ALT_TEXT_ENCODER:
+                question_input = question_input.to(device)
+                answer_input = answer_input.to(device)
+            outputs = model(images, question_input, answer_input)
+            probabilities = torch.softmax(outputs, dim=1)
+            all_probs.extend(probabilities[:, 1].cpu().numpy())
+    plot_roc_curve(all_labels, all_probs)
+    
+    # Save the trained model for future use.
+    torch.save(model.state_dict(), "trained_model.pkl")
+    print("Model saved as 'trained_model.pkl'")
