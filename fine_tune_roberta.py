@@ -12,12 +12,12 @@ from torchvision import models, transforms
 from torch.utils.data import DataLoader, Dataset
 import timm
 from transformers import AutoTokenizer, AutoModel
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, roc_curve
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, roc_curve, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
 # Global flags.
 USE_ALT_TEXT_ENCODER = True
-USE_FOCAL_LOSS = True
+USE_FOCAL_LOSS = False
 
 class FocalLoss(nn.Module):
     def __init__(self, gamma=2, alpha=None, reduction='mean'):
@@ -306,6 +306,8 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
     best_val_acc = 0.0
     epochs_no_improve = 0
     best_model_state = None
+    history = {"train_acc": [], "val_acc": [], "loss": []}
+
     for epoch in range(num_epochs):
         epoch_start = time.time()
         running_loss = 0.0
@@ -334,6 +336,10 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
 
         train_acc = evaluate_accuracy(model, train_loader, device)
         val_acc = evaluate_accuracy(model, val_loader, device)
+        history['train_acc'].append(train_acc)
+        history['val_acc'].append(val_acc)
+        history['loss'].append(epoch_loss)
+
         print(f'Epoch [{epoch+1}/{num_epochs}] Loss: {epoch_loss:.4f}, Duration: {epoch_duration:.2f}s, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}')
         if val_acc > best_val_acc:
             best_val_acc = val_acc
@@ -347,6 +353,7 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
                 break
     overall_duration = time.time() - overall_start
     print(f'TOTAL Training Time: {overall_duration:.2f} seconds')
+    return history
 
 ###########################################
 # Additional Metrics Calculation
@@ -433,6 +440,45 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
 
     return all_labels, all_predictions
 
+def plot_training_curves(history):
+    plt.figure()
+    plt.plot(history['train_acc'], label='Train Acc')
+    plt.plot(history['val_acc'], label='Val Acc')
+    plt.title("Accuracy Curve")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("accuracy_curve.png")
+
+    plt.figure()
+    plt.plot(history['loss'], label='Training Loss')
+    plt.title("Loss Curve")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("loss_curve.png")
+
+def plot_confusion_matrix(y_true, y_pred):
+    cm = confusion_matrix(y_true, y_pred)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No Match", "Match"])
+    disp.plot(cmap=plt.cm.Blues)
+    plt.title("Confusion Matrix")
+    plt.grid(False)
+    plt.savefig("confusion_matrix.png")
+
+def plot_roc_curve(y_true, y_scores):
+    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    plt.figure()
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc_score(y_true, y_scores):.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.title("ROC Curve")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.savefig("roc_curve.png")
 
 # Save the model checkpoint
 def save_model(model, filename="trained_model.pth"):
@@ -443,44 +489,38 @@ def save_model(model, filename="trained_model.pth"):
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using device: {device}')
-    
-    # Paths and files.
+
+    # Load data...
     IMAGES_PATH = "/workspaces/ADV-ML/visual7w-images"
     train_data_file = "/workspaces/ADV-ML/visual7w-text/v7w.TrainImages.itm.txt"
     dev_data_file = "/workspaces/ADV-ML/visual7w-text/v7w.DevImages.itm.txt"
     test_data_file = "/workspaces/ADV-ML/visual7w-text/v7w.TestImages.itm.txt"
     sentence_embeddings_file = "/workspaces/ADV-ML/v7w.sentence_embeddings-gtr-t5-large.pkl"
     sentence_embeddings = load_sentence_embeddings(sentence_embeddings_file)
-    
-    # Create datasets and loaders.
+
     train_dataset = ITM_Dataset(IMAGES_PATH, train_data_file, sentence_embeddings, data_split="train", train_ratio=0.2, use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
     train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
     dev_dataset = ITM_Dataset(IMAGES_PATH, dev_data_file, sentence_embeddings, data_split="dev", use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
     dev_loader = DataLoader(dev_dataset, batch_size=16, shuffle=False)
     test_dataset = ITM_Dataset(IMAGES_PATH, test_data_file, sentence_embeddings, data_split="test", use_alt_text_encoder=USE_ALT_TEXT_ENCODER)
     test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
-    
-    # Choose architecture: "CNN", "ViT", or "Ensemble".
+
     MODEL_ARCHITECTURE = "Ensemble"
     USE_PRETRAINED_MODEL = True
     model = ITM_Model(num_classes=2, ARCHITECTURE=MODEL_ARCHITECTURE, PRETRAINED=USE_PRETRAINED_MODEL, use_alt_text_encoder=USE_ALT_TEXT_ENCODER, dropout_rate=0.3).to(device)
     print("\nModel Architecture:")
     print(model)
-    
-    # Choose loss function.
-    if USE_FOCAL_LOSS:
-        criterion = FocalLoss(gamma=2, alpha=0.75, reduction='mean')
-    else:
-        criterion = nn.CrossEntropyLoss()
-    
-    optimiser, scheduler = get_optimizer_and_scheduler(model, base_lr=3e-5, text_lr=1e-5)
-    
-    # Train with early stopping.
-    train_model(model, MODEL_ARCHITECTURE, train_loader, dev_loader, criterion, optimiser, scheduler, num_epochs=15, patience=3)
-    
-    # Evaluate and capture labels & predictions for confusion matrix & ROC curve.
-    all_labels, all_predictions = evaluate_model(model, MODEL_ARCHITECTURE, test_loader, device)
 
-    # Save the model
+    criterion = FocalLoss(gamma=2, alpha=0.75, reduction='mean') if USE_FOCAL_LOSS else nn.CrossEntropyLoss()
+    optimiser, scheduler = get_optimizer_and_scheduler(model, base_lr=3e-5, text_lr=1e-5)
+
+    history = train_model(model, MODEL_ARCHITECTURE, train_loader, dev_loader, criterion, optimiser, scheduler, num_epochs=15, patience=5)
+    all_labels, all_predictions = evaluate_model(model, MODEL_ARCHITECTURE, test_loader, device)
     save_model(model)
+
+    # Visualization
+    plot_training_curves(history)
+    plot_confusion_matrix(all_labels, all_predictions)
+    plot_roc_curve(all_labels, [1 if p == 1 else 0 for p in all_predictions])
+
 

@@ -120,3 +120,52 @@ Recall: 0.4033
 F1-Score: 0.5035
 AUC: 0.7644
 Testing Time: 40.14 seconds
+
+Epoch [7/15] Loss: 0.0181, Duration: 143.80s, Train Acc: 0.9376, Val Acc: 0.8021
+Early stopping triggered.
+TOTAL Training Time: 1691.93 seconds
+EVALUATING Ensemble model
+Test Accuracy: 0.7923
+Balanced Accuracy: 0.7923
+Total Test Loss: 0.0758
+Mean Reciprocal Rank (MRR): 0.7770
+Precision: 0.6353
+Recall: 0.3973
+F1-Score: 0.4889
+AUC: 0.7677
+Testing Time: 36.44 seconds
+Model saved to trained_model.pth
+
+Epoch [8/15] Loss: 0.1567, Duration: 145.70s, Train Acc: 0.9479, Val Acc: 0.7936  roberta focal off
+Early stopping triggered.
+TOTAL Training Time: 1923.17 seconds
+EVALUATING Ensemble model
+Test Accuracy: 0.7860
+Balanced Accuracy: 0.7860
+Total Test Loss: 0.7103
+Mean Reciprocal Rank (MRR): 0.7792
+Precision: 0.5810
+Recall: 0.5157
+F1-Score: 0.5464
+AUC: 0.7695
+Testing Time: 39.23 seconds
+Model saved to trained_model.pth
+
+TRAINING model
+Epoch [1/15] Train Loss: 0.5696, Val Loss: 0.5595, Train Acc: 0.7482, Val Acc: 0.7500
+Epoch [2/15] Train Loss: 0.5584, Val Loss: 0.5389, Train Acc: 0.7482, Val Acc: 0.7500
+Epoch [3/15] Train Loss: 0.5391, Val Loss: 0.5142, Train Acc: 0.7724, Val Acc: 0.7743
+Epoch [4/15] Train Loss: 0.5230, Val Loss: 0.4991, Train Acc: 0.7873, Val Acc: 0.7889
+Epoch [5/15] Train Loss: 0.5114, Val Loss: 0.4906, Train Acc: 0.7912, Val Acc: 0.7909
+Epoch [6/15] Train Loss: 0.5052, Val Loss: 0.4895, Train Acc: 0.7917, Val Acc: 0.7946
+Epoch [7/15] Train Loss: 0.5019, Val Loss: 0.4873, Train Acc: 0.7923, Val Acc: 0.7949
+Epoch [8/15] Train Loss: 0.4973, Val Loss: 0.4821, Train Acc: 0.7948, Val Acc: 0.7951
+Epoch [9/15] Train Loss: 0.4934, Val Loss: 0.4822, Train Acc: 0.7950, Val Acc: 0.7963
+Epoch [10/15] Train Loss: 0.4960, Val Loss: 0.4823, Train Acc: 0.7949, Val Acc: 0.7959
+Epoch [11/15] Train Loss: 0.4950, Val Loss: 0.4813, Train Acc: 0.7950, Val Acc: 0.7968
+Epoch [12/15] Train Loss: 0.4947, Val Loss: 0.4809, Train Acc: 0.7961, Val Acc: 0.7968
+Epoch [13/15] Train Loss: 0.4961, Val Loss: 0.4803, Train Acc: 0.7962, Val Acc: 0.7969
+Epoch [14/15] Train Loss: 0.4935, Val Loss: 0.4782, Train Acc: 0.7972, Val Acc: 0.7963
+Epoch [15/15] Train Loss: 0.4950, Val Loss: 0.4781, Train Acc: 0.7970, Val Acc: 0.7988
+Precision: 0.7729, Recall: 0.2368, F1: 0.3625, AUC: 0.7326
+Model saved to trained_model.pth
