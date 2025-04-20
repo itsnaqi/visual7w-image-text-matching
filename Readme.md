@@ -169,3 +169,21 @@ Epoch [14/15] Train Loss: 0.4935, Val Loss: 0.4782, Train Acc: 0.7972, Val Acc: 
 Epoch [15/15] Train Loss: 0.4950, Val Loss: 0.4781, Train Acc: 0.7970, Val Acc: 0.7988
 Precision: 0.7729, Recall: 0.2368, F1: 0.3625, AUC: 0.7326
 Model saved to trained_model.pth
+
+vilbert, cnn+vit fuse.
+Epoch 1/10 - Train Loss: 0.5072, Val Acc: 0.7743
+Epoch 2/10 - Train Loss: 0.4729, Val Acc: 0.7723
+Epoch 3/10 - Train Loss: 0.4630, Val Acc: 0.7969
+Epoch 4/10 - Train Loss: 0.4481, Val Acc: 0.8071
+Epoch 5/10 - Train Loss: 0.4410, Val Acc: 0.8058
+Epoch 6/10 - Train Loss: 0.4363, Val Acc: 0.7919
+Epoch 7/10 - Train Loss: 0.4264, Val Acc: 0.7938
+Epoch 8/10 - Train Loss: 0.4191, Val Acc: 0.7908
+Epoch 9/10 - Train Loss: 0.4204, Val Acc: 0.8121
+Epoch 10/10 - Train Loss: 0.4148, Val Acc: 0.8078
+Test Acc: 0.7951505016722408
+Precision: 0.6043
+Recall:    0.5231
+F1‑Score:  0.5608
+AUC:       0.8256
+Done.s
