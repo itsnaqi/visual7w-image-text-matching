@@ -187,3 +187,30 @@ Recall:    0.5231
 F1‑Score:  0.5608
 AUC:       0.8256
 Done.s
+
+Vilbert fine tune
+Epoch 1/5 Loss: 0.3807 Val Acc: 0.8584
+Epoch 2/5 Loss: 0.2924 Val Acc: 0.8609
+Epoch 3/5 Loss: 0.2315 Val Acc: 0.8617
+Epoch 4/5 Loss: 0.1769 Val Acc: 0.8627
+Epoch 5/5 Loss: 0.1256 Val Acc: 0.8515
+Test Acc: 0.8536789297658863
+Precision: 0.7042160737812911
+Recall: 0.7150501672240802
+F1: 0.7095917690009956
+AUC: 0.8976437996592134
+Done.
+
+
+Epoch 1/5: Train Loss 0.3982, Acc 0.8202 | Val   Loss 0.3332, Acc 0.8485
+Epoch 2/5: Train Loss 0.3186, Acc 0.8615 | Val   Loss 0.3194, Acc 0.8600
+Epoch 3/5: Train Loss 0.2705, Acc 0.8816 | Val   Loss 0.3383, Acc 0.8620
+Epoch 4/5: Train Loss 0.2253, Acc 0.9014 | Val   Loss 0.3500, Acc 0.8574
+Epoch 5/5: Train Loss 0.1777, Acc 0.9258 | Val   Loss 0.3968, Acc 0.8560
+Optimal threshold: 0.34, Validation F1: 0.7071
+Test Accuracy : 0.8439799331103679
+Precision     : 0.7132018209408194
+Recall        : 0.6287625418060201
+F1 Score      : 0.6683256309989335
+AUC           : 0.893032665555568
+Done.
