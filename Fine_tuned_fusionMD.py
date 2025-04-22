@@ -12,8 +12,9 @@ from torchvision import models, transforms
 from torch.utils.data import DataLoader, Dataset
 import timm
 from transformers import AutoTokenizer, AutoModel
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
-
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, roc_curve, auc
+import matplotlib.pyplot as plt
+import seaborn as sns
 # Flags to toggle various options:
 USE_ALT_TEXT_ENCODER = True           # If True, use DistilBERT for text encoding (fine-tuned)
 USE_FOCAL_LOSS = True                  # If True, use Focal Loss instead of CrossEntropyLoss
@@ -321,10 +322,18 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
     overall_start = time.time()
     best_val_acc = 0.0
     epochs_no_improve = 0
+    
+    # Track training and validation metrics
+    train_accuracies = []
+    val_accuracies = []
+    train_losses = []
+    val_losses = []
+    
     for epoch in range(num_epochs):
         epoch_start = time.time()
         running_loss = 0.0
         total_batches = len(train_loader)
+        
         for batch_idx, batch in enumerate(train_loader):
             if len(batch) == 6:
                 images, question_input, answer_input, labels, _, _ = batch
@@ -341,18 +350,26 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
             loss.backward()
             optimiser.step()
             running_loss += loss.item()
-            if batch_idx % 100 == 0:
-                print(f'Epoch [{epoch+1}/{num_epochs}], Batch [{batch_idx}/{total_batches}], Loss: {loss.item():.4f}')
+            
+        scheduler.step()
+        
         epoch_loss = running_loss / total_batches
         epoch_duration = time.time() - epoch_start
-
-        scheduler.step()  # Adjust learning rate
-
-        # Evaluate training accuracy.
+        
+        # Calculate training accuracy
         train_acc = evaluate_accuracy(model, train_loader, device)
-        # Evaluate on validation set for early stopping.
+        # Calculate validation accuracy
         val_acc = evaluate_accuracy(model, val_loader, device)
+        
+        # Add metrics to lists
+        train_accuracies.append(train_acc)
+        val_accuracies.append(val_acc)
+        train_losses.append(epoch_loss)
+        val_losses.append(epoch_loss)
+        
         print(f'Epoch [{epoch+1}/{num_epochs}] Average Loss: {epoch_loss:.4f}, Duration: {epoch_duration:.2f} s, Training Accuracy: {train_acc:.4f}, Validation Accuracy: {val_acc:.4f}')
+        
+        # Early stopping
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             epochs_no_improve = 0
@@ -363,8 +380,34 @@ def train_model(model, ARCHITECTURE, train_loader, val_loader, criterion, optimi
                 print("Early stopping triggered.")
                 model.load_state_dict(best_model_state)
                 break
+    
     overall_duration = time.time() - overall_start
     print(f'TOTAL Training Time: {overall_duration:.2f} seconds')
+    
+    # Plot training and validation curves
+    epochs = range(1, len(train_accuracies) + 1)
+    
+    plt.figure(figsize=(12, 5))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, train_accuracies, 'b-', label='Training Accuracy')
+    plt.plot(epochs, val_accuracies, 'g-', label='Validation Accuracy')
+    plt.title(f'Training and Validation Accuracy - {ARCHITECTURE}')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, train_losses, 'b-', label='Training Loss')
+    plt.plot(epochs, val_losses, 'g-', label='Validation Loss')
+    plt.title(f'Training and Validation Loss - {ARCHITECTURE}')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig(f'distilbert_training_curves_{ARCHITECTURE}.png')
+    plt.close()
 
 ###########################################
 # Evaluation Function with additional metrics (Precision, Recall, F1-Score, AUC)
@@ -380,6 +423,7 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
     all_probabilities = []  # probability for class "match"
     group_keys = []         # (img_name, question_text) for MRR
     eval_start = time.time()
+    
     with torch.no_grad():
         for batch in test_loader:
             if len(batch) == 6:
@@ -404,14 +448,16 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
             all_predictions.extend(preds.cpu().numpy())
             all_probabilities.extend(probabilities[:, 1].cpu().numpy())
             group_keys.extend(list(zip(img_names, question_texts)))
+    
     eval_duration = time.time() - eval_start
     test_loss = total_loss / total_samples
     test_accuracy = correct / total_samples
 
+    # Compute additional metrics
     precision = precision_score(all_labels, all_predictions, average='binary')
     recall = recall_score(all_labels, all_predictions, average='binary')
     f1 = f1_score(all_labels, all_predictions, average='binary')
-    auc = roc_auc_score(all_labels, all_probabilities)
+    auc_value = roc_auc_score(all_labels, all_probabilities)
 
     # Compute Mean Reciprocal Rank (MRR)
     group_dict = {}
@@ -439,8 +485,35 @@ def evaluate_model(model, ARCHITECTURE, test_loader, device):
     print(f'Precision: {precision:.4f}')
     print(f'Recall: {recall:.4f}')
     print(f'F1-Score: {f1:.4f}')
-    print(f'AUC: {auc:.4f}')
+    print(f'AUC: {auc_value:.4f}')
     print(f'Testing Time: {eval_duration:.2f} seconds')
+
+    # Generate and save confusion matrix
+    cm = confusion_matrix(all_labels, all_predictions)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+               xticklabels=['Non-Match', 'Match'], 
+               yticklabels=['Non-Match', 'Match'])
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title(f'Confusion Matrix - {ARCHITECTURE}')
+    plt.savefig(f'distilbert_cm_{ARCHITECTURE}.png')
+    plt.close()
+
+    # Generate and save ROC curve
+    fpr, tpr, _ = roc_curve(all_labels, all_probabilities)
+    plt.figure()
+    plt.plot(fpr, tpr, color='darkorange', lw=2, 
+            label=f'ROC curve (AUC = {auc_value:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(f'ROC Curve - {ARCHITECTURE}')
+    plt.legend(loc="lower right")
+    plt.savefig(f'distilbert_roc_{ARCHITECTURE}.png')
+    plt.close()
 
 ###########################################
 # Main Execution

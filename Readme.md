@@ -54,19 +54,19 @@ Testing Time: 27.70 seconds
 
 
 Alternative Text Encoder Module using DistilBERT with Dropout  # Attention-based Fusion Module using Multihead Attention
-Epoch [7/15] Average Loss: 0.0202, Duration: 129.46 s, Training Accuracy: 0.9262, Validation Accuracy: 0.8044
+Epoch [7/15] Average Loss: 0.0216, Duration: 128.76 s, Training Accuracy: 0.9182, Validation Accuracy: 0.8068
 Early stopping triggered.
-TOTAL Training Time: 1565.53 seconds
+TOTAL Training Time: 1553.73 seconds
 EVALUATING Ensemble model
-Test Accuracy: 0.7978
-Balanced Accuracy: 0.7978
-Total Test Loss: 0.0716
-Mean Reciprocal Rank (MRR): 0.7820
-Precision: 0.6603
-Recall: 0.3940
-F1-Score: 0.4935
-AUC: 0.7744
-Testing Time: 35.87 seconds
+Test Accuracy: 0.7988
+Balanced Accuracy: 0.7988
+Total Test Loss: 0.0683
+Mean Reciprocal Rank (MRR): 0.7828
+Precision: 0.6543
+Recall: 0.4140
+F1-Score: 0.5072
+AUC: 0.7760
+Testing Time: 34.93 seconds
 Explanation of Key Changes:
 
     Regularization with Dropout:
@@ -214,3 +214,24 @@ Recall        : 0.6287625418060201
 F1 Score      : 0.6683256309989335
 AUC           : 0.893032665555568
 Done.
+
+Epoch [30/30] Average Loss: 0.3700, Duration: 66.82s, Training Accuracy: 0.8717
+TOTAL Training Time: 3883.52 seconds
+EVALUATING Ensemble model CNN+ViT
+Test Accuracy: 0.7786
+Total Test Loss: 0.5879
+Mean Reciprocal Rank (MRR): 0.8022
+Testing Time: 24.41 seconds
+Precision: 0.5533
+Recall: 0.5940
+F1 Score: 0.5729
+ROC AUC: 0.8078
+
+distilbert without fine tuning concatenation of cnn+vit
+Epoch 11/15 | Train Loss: 0.4225 | Train Acc: 0.8111 | Val Loss: 0.5056 | Val Acc: 0.7598
+Early stopping triggered
+TOTAL Training Time: 1115.05 seconds
+Precision: 0.6849
+Recall: 0.3344
+F1-Score: 0.4494
+AUC: 0.7617
