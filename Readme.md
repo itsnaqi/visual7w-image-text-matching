@@ -1,3 +1,24 @@
+# Visual7W Image–Text Matching
+
+Compare image–text matching models on Visual7W using balanced accuracy and mean reciprocal rank.
+
+The recorded CNN run achieved 80.48% balanced test accuracy and a mean reciprocal rank of 0.7823. The vision transformer recorded 79.82% balanced test accuracy.
+
+## Explore the project
+
+- [ViT+CNN.py](ViT+CNN.py)
+- [ITM_ViT.py](ITM_ViT.py)
+- [visual7w-text/](visual7w-text)
+
+## Collaboration
+
+Syed Mohd Naqi worked across all stages of this project with guidance from senior peers.
+
+[Original collaborative project](https://github.com/Nabeelvolt/Multimodal-Machine-Learning-for-Visual-QA-and-Reinforcement-Learning-in-Gaming-)
+
+## Original experiment log
+
+```text
 Resnet50
 EVALUATING CNN model
 Balanced Accuracy: 0.6504, 32.18 seconds
@@ -236,3 +257,4 @@ Precision: 0.6849
 Recall: 0.3344
 F1-Score: 0.4494
 AUC: 0.7617
+```
